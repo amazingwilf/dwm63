@@ -60,13 +60,13 @@
 #define TEXTW(X)                (drw_fontset_getwidth(drw, (X)) + lrpad)
 
 /* enums */
-enum { CurNormal, CurResize, CurMove, CurLast }; /* cursor */
-enum { SchemeNorm, SchemeSel }; /* color schemes */
+enum { CurResizeBR, CurResizeBL, CurResizeTR, CurResizeTL, CurNormal, CurMove, CurLast }; /* cursor */
+enum { SchemeNorm, SchemeSel, SchemeStButton, SchemeLtSymbol }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType,
        NetWMWindowTypeDialog, NetClientList, NetClientInfo, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
-enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
+enum { ClkButton, ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
 enum {
 	BAR_ALIGN_LEFT,
@@ -245,9 +245,11 @@ static void maprequest(XEvent *e);
 static void monocle(Monitor *m);
 static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
+static unsigned int nexttag(void);
 static Client *nexttagged(Client *c);
 static Client *nexttiled(Client *c);
 static void pop(Client *);
+static unsigned int prevtag(void);
 static void propertynotify(XEvent *e);
 static void quit(const Arg *arg);
 static Monitor *recttomon(int x, int y, int w, int h);
@@ -275,8 +277,11 @@ static void sigterm(int unused);
 static void spawn(const Arg *arg);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
+static void tagtonext(const Arg *arg);
+static void tagtoprev(const Arg *arg);
 static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
+static void togglefullscr(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void unfocus(Client *c, int setfocus);
@@ -293,6 +298,8 @@ static void updatetitle(Client *c);
 static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
 static void view(const Arg *arg);
+static void viewnext(const Arg *arg);
+static void viewprev(const Arg *arg);
 static Client *wintoclient(Window w);
 static Monitor *wintomon(Window w);
 static int xerror(Display *dpy, XErrorEvent *ee);
@@ -423,6 +430,11 @@ applyrules(Client *c)
 	if (ch.res_name)
 		XFree(ch.res_name);
 	c->tags = c->tags & TAGMASK ? c->tags & TAGMASK : c->mon->tagset[c->mon->seltags];
+	if(viewonrulestag)
+	{
+		Arg a = {.ui = c->tags};
+		view(&a);
+	}
 }
 
 int
@@ -1482,6 +1494,13 @@ nexttagged(Client *c) {
 	return walked;
 }
 
+unsigned int
+nexttag(void)
+{
+	unsigned int seltag = selmon->tagset[selmon->seltags];
+	return seltag == (1 << (LENGTH(tags) - 1)) ? 1 : seltag << 1;
+}
+
 Client *
 nexttiled(Client *c)
 {
@@ -1496,6 +1515,13 @@ pop(Client *c)
 	attach(c);
 	focus(c);
 	arrange(c->mon);
+}
+
+unsigned int
+prevtag(void)
+{
+	unsigned int seltag = selmon->tagset[selmon->seltags];
+	return seltag == 1 ? (1 << (LENGTH(tags) - 1)) : seltag >> 1;
 }
 
 void
@@ -1597,10 +1623,13 @@ resizeclient(Client *c, int x, int y, int w, int h)
 void
 resizemouse(const Arg *arg)
 {
-	int ocx, ocy, nw, nh;
+	int opx, opy, ocx, ocy, och, ocw, nx, ny, nw, nh;
 	Client *c;
 	Monitor *m;
 	XEvent ev;
+	int horizcorner, vertcorner;
+	unsigned int dui;
+	Window dummy;
 	Time lasttime = 0;
 
 	if (!(c = selmon->sel))
@@ -1610,10 +1639,15 @@ resizemouse(const Arg *arg)
 	restack(selmon);
 	ocx = c->x;
 	ocy = c->y;
-	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-		None, cursor[CurResize]->cursor, CurrentTime) != GrabSuccess)
+	och = c->h;
+	ocw = c->w;
+	if (!XQueryPointer(dpy, c->win, &dummy, &dummy, &opx, &opy, &nx, &ny, &dui))
 		return;
-	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w + c->bw - 1, c->h + c->bw - 1);
+	horizcorner = nx < c->w / 2;
+	vertcorner  = ny < c->h / 2;
+	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+		None, cursor[horizcorner | (vertcorner << 1)]->cursor, CurrentTime) != GrabSuccess)
+		return;
 	do {
 		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
 		switch(ev.type) {
@@ -1627,8 +1661,10 @@ resizemouse(const Arg *arg)
 				continue;
 			lasttime = ev.xmotion.time;
 
-			nw = MAX(ev.xmotion.x - ocx - 2 * c->bw + 1, 1);
-			nh = MAX(ev.xmotion.y - ocy - 2 * c->bw + 1, 1);
+			nx = horizcorner ? (ocx + ev.xmotion.x - opx) : c->x;
+			ny = vertcorner ? (ocy + ev.xmotion.y - opy) : c->y;
+			nw = MAX(horizcorner ? (ocx + ocw - nx) : (ocw + (ev.xmotion.x - opx)), 1);
+			nh = MAX(vertcorner ? (ocy + och - ny) : (och + (ev.xmotion.y - opy)), 1);
 			if (c->mon->wx + nw >= selmon->wx && c->mon->wx + nw <= selmon->wx + selmon->ww
 			&& c->mon->wy + nh >= selmon->wy && c->mon->wy + nh <= selmon->wy + selmon->wh)
 			{
@@ -1637,11 +1673,10 @@ resizemouse(const Arg *arg)
 					togglefloating(NULL);
 			}
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating)
-				resize(c, c->x, c->y, nw, nh, 1);
+				resizeclient(c, nx, ny, nw, nh);
 			break;
 		}
 	} while (ev.type != ButtonRelease);
-	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w + c->bw - 1, c->h + c->bw - 1);
 	XUngrabPointer(dpy, CurrentTime);
 	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
@@ -1895,7 +1930,10 @@ setup(void)
 	netatom[NetClientInfo] = XInternAtom(dpy, "_NET_CLIENT_INFO", False);
 	/* init cursors */
 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
-	cursor[CurResize] = drw_cur_create(drw, XC_sizing);
+	cursor[CurResizeBR] = drw_cur_create(drw, XC_bottom_right_corner);
+	cursor[CurResizeBL] = drw_cur_create(drw, XC_bottom_left_corner);
+	cursor[CurResizeTR] = drw_cur_create(drw, XC_top_right_corner);
+	cursor[CurResizeTL] = drw_cur_create(drw, XC_top_left_corner);
 	cursor[CurMove] = drw_cur_create(drw, XC_fleur);
 	/* init appearance */
 	scheme = ecalloc(LENGTH(colors) + 1, sizeof(Clr *));
@@ -2033,6 +2071,8 @@ tag(const Arg *arg)
 		setclienttagprop(c);
 		focus(NULL);
 		arrange(selmon);
+		if(viewontag)
+			view(arg);
 	}
 }
 
@@ -2042,6 +2082,32 @@ tagmon(const Arg *arg)
 	if (!selmon->sel || !mons->next)
 		return;
 	sendmon(selmon->sel, dirtomon(arg->i));
+}
+
+void
+tagtonext(const Arg *arg)
+{
+	unsigned int tmp;
+
+	if (selmon->sel == NULL)
+		return;
+
+	tmp = nexttag();
+	tag(&(const Arg){.ui = tmp });
+	view(&(const Arg){.ui = tmp });
+}
+
+void
+tagtoprev(const Arg *arg)
+{
+	unsigned int tmp;
+
+	if (selmon->sel == NULL)
+		return;
+
+	tmp = prevtag();
+	tag(&(const Arg){.ui = tmp });
+	view(&(const Arg){.ui = tmp });
 }
 
 void
@@ -2067,6 +2133,13 @@ togglefloating(const Arg *arg)
 		resize(selmon->sel, selmon->sel->x, selmon->sel->y,
 			selmon->sel->w, selmon->sel->h, 0);
 	arrange(selmon);
+}
+
+void
+togglefullscr(const Arg *arg)
+{
+  if(selmon->sel)
+    setfullscreen(selmon->sel, !selmon->sel->isfullscreen);
 }
 
 void
@@ -2483,6 +2556,18 @@ view(const Arg *arg)
 	arrange(selmon);
 }
 
+void
+viewnext(const Arg *arg)
+{
+	view(&(const Arg){.ui = nexttag()});
+}
+
+void
+viewprev(const Arg *arg)
+{
+	view(&(const Arg){.ui = prevtag()});
+}
+ 
 Client *
 wintoclient(Window w)
 {

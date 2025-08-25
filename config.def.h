@@ -10,8 +10,11 @@ static const unsigned int gappov    = 20;       /* vert outer gap between window
 static       int smartgaps          = 0;        /* 1 means no outer gap when there is only one window */
 static const int showbar            = 1;        /* 0 means no bar */
 static const int topbar             = 1;        /* 0 means bottom bar */
+static const char buttonbar[]       = " ";
 static const char statussep         = ';';      /* separator between status bars */
-static const char *fonts[]          = { "Iosevka Nerd Font:size=11" };
+static const char *fonts[]          = { "Iosevka Nerd Font:size=11",
+										"Iosevka Nerd Font:size=14",
+										"JetBrainsMono Nerd font:style=ExtraBold:size=10" };
 static const char dmenufont[]       = "Iosevka Nerd Font:size=11";
 
 #include "colors.h"
@@ -19,10 +22,13 @@ static const char *colors[][3]      = {
 	/*               fg         bg         border   */
 	[SchemeNorm] = { col_gray3, col_gray1, col_gray2 },
 	[SchemeSel]  = { col_gray4, col_title,  col_blue  },
+	[SchemeStButton]  = { col_white, col_black,  NULL  },
+	[SchemeLtSymbol]  = { col_yellow, col_gray1,  NULL  },
 };
 
 static const char *const autostart[] = {
 	"/usr/lib/xfce-polkit/xfce-polkit", NULL,
+	"dunst", NULL,
 	"nitrogen", "--restore", NULL,
 	NULL /* terminate */
 };
@@ -53,6 +59,7 @@ static const Rule rules[] = {
  */
 static const BarRule barrules[] = {
 	/* monitor  bar    alignment         widthfunc              drawfunc              clickfunc           name */
+	{ -1,       0,     BAR_ALIGN_LEFT,   width_stbutton,        draw_stbutton,        click_stbutton,     "statusbutton" },
 	{ -1,       0,     BAR_ALIGN_LEFT,   width_tags,            draw_tags,            click_tags,         "tags" },
 	{ -1,       0,     BAR_ALIGN_LEFT,   width_ltsymbol,        draw_ltsymbol,        click_ltsymbol,     "layout" },
 	{ 'A',      0,     BAR_ALIGN_RIGHT,  width_status2d,        draw_status2d,        click_statuscmd,    "status2d" },
@@ -66,6 +73,8 @@ static const float mfact     = 0.50; /* factor of master area size [0.05..0.95] 
 static const int nmaster     = 1;    /* number of clients in master area */
 static const int resizehints = 0;    /* 1 means respect size hints in tiled resizals */
 static const int lockfullscreen = 1; /* 1 will force focus on the fullscreen window */
+static const int viewontag         = 1;     /* Switch view on tag switch */
+static const int viewonrulestag 	= 1;		 /* 1 means when open applications view will move to tags defined in rules*/
 
 #define FORCE_VSPLIT 1  /* nrowgrid layout: force two clients to always split vertically */
 #include "vanitygaps.c"
@@ -132,8 +141,13 @@ static Key keys[] = {
 	{ MODKEY,                       XK_f,      setlayout,      {.v = &layouts[1]} },
 	{ MODKEY,                       XK_m,      setlayout,      {.v = &layouts[2]} },
 	{ MODKEY|ShiftMask,             XK_space,  togglefloating, {0} },
+	{ MODKEY|ShiftMask,             XK_f,      togglefullscr,  {0} },
 	{ MODKEY,                       XK_0,      view,           {.ui = ~0 } },
 	{ MODKEY|ShiftMask,             XK_0,      tag,            {.ui = ~0 } },
+	{ MODKEY,                       XK_Right,  viewnext,       {0} },
+	{ MODKEY,                       XK_Left,   viewprev,       {0} },
+	{ MODKEY|ShiftMask,             XK_Right,  tagtonext,      {0} },
+	{ MODKEY|ShiftMask,             XK_Left,   tagtoprev,      {0} },
 	TAGKEYS(                        XK_1,                      0)
 	TAGKEYS(                        XK_2,                      1)
 	TAGKEYS(                        XK_3,                      2)
@@ -145,9 +159,10 @@ static Key keys[] = {
 };
 
 /* button definitions */
-/* click can be ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle, ClkClientWin, or ClkRootWin */
+/* click can be ClkButton, ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle, ClkClientWin, or ClkRootWin */
 static Button buttons[] = {
 	/* click                event mask      button          function        argument */
+	{ ClkButton,            0,              Button1,        spawn,          {.v = dmenucmd } },
 	{ ClkLtSymbol,          0,              Button1,        setlayout,      {0} },
 	{ ClkLtSymbol,          0,              Button3,        setlayout,      {.v = &layouts[2]} },
 	{ ClkWinTitle,          0,              Button2,        zoom,           {0} },

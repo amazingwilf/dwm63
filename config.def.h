@@ -15,7 +15,7 @@ static const char statussep         = ';';      /* separator between status bars
 static const char *fonts[]          = { "Iosevka Nerd Font:size=11",
 										"Iosevka Nerd Font:size=14",
 										"JetBrainsMono Nerd font:style=ExtraBold:size=10" };
-static const char dmenufont[]       = "Iosevka Nerd Font:size=11";
+static const char dmenufont[]       = "Iosevka Nerd Font:style=Bold:size=11";
 
 #include "colors.h"
 static const char *colors[][3]      = {
@@ -111,7 +111,7 @@ static const Layout layouts[] = {
 
 /* commands */
 static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() */
-static const char *dmenucmd[] = { "dmenu_run", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray1, "-nf", col_gray3, "-sb", col_title, "-sf", col_gray4, NULL };
+static const char *dmenucmd[] = { "dmenu_run", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray1, "-nf", col_blue, "-sb", col_title, "-sf", col_yellow, NULL };
 static const char *termcmd[]  = { "st", NULL };
 static const char *firefoxcmd[] = { "firefox", NULL };
 
